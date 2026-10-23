@@ -1,0 +1,436 @@
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <vector>
+#include <algorithm>
+#include <ctime>
+#include <cctype>
+
+using namespace std;
+
+/* =====================================================
+   EVITA EL STRUCT PADDING
+   ===================================================== */
+#pragma pack(push,1)
+
+struct Partition{
+    int id;
+    char name[16];
+    char type;      // P primaria | E extendida
+    int start;
+    int end;
+    int size;
+    bool active;
+};
+
+struct MBR{
+    char disk_name[20];
+    int disk_size;
+    int free_space;
+    Partition parts[4];
+};
+
+#pragma pack(pop)
+
+/* ======================= UTILIDADES ======================= */
+
+static string limpiarTexto(const char *raw, size_t maxlen){
+    string out;
+    for(size_t i=0;i<maxlen && raw[i]!='\0';i++){
+        unsigned char c = (unsigned char)raw[i];
+        if(isprint(c)){
+            if(c=='{'||c=='}'||c=='|'||c=='<'||c=='>'||c=='"'){
+                out.push_back('\\');
+            }
+            out.push_back((char)c);
+        }
+        else out.push_back('?');
+    }
+    if(out.empty()) out="(sin_nombre)";
+    return out;
+}
+
+bool existeArchivo(string path){
+    ifstream f(path, ios::binary);
+    return f.good();
+}
+
+MBR leerMBR(string path){
+    MBR mbr{}; // inicializa en cero
+    ifstream file(path, ios::binary);
+    if(!file){
+        cerr<<"No se pudo abrir el disco\n";
+        return mbr;
+    }
+    file.read((char*)&mbr,sizeof(MBR));
+    file.close();
+    return mbr;
+}
+
+void escribirMBR(string path,MBR &mbr){
+    fstream file(path, ios::in|ios::out|ios::binary);
+    if(!file){
+        cerr<<"Error escribiendo MBR\n";
+        return;
+    }
+    file.seekp(0);
+    file.write((char*)&mbr,sizeof(MBR));
+    file.close();
+}
+
+/* ======================= CREAR DISCO ======================= */
+
+void crearDisco(string nombre,int sizeKB){
+
+    if(existeArchivo(nombre)){
+        cout<<"El disco ya existe\n";
+        return;
+    }
+
+    ofstream file(nombre,ios::binary);
+
+    int totalBytes=sizeKB*1024;
+    char cero='\0';
+
+    for(int i=0;i<totalBytes;i++)
+        file.write(&cero,1);
+
+    MBR mbr{}; // TODO en cero
+    strncpy(mbr.disk_name,nombre.c_str(),sizeof(mbr.disk_name)-1);
+    mbr.disk_size=totalBytes;
+    mbr.free_space=totalBytes-sizeof(MBR);
+
+    for(int i=0;i<4;i++){
+        mbr.parts[i].active=false;
+        mbr.parts[i].id=0;
+        memset(mbr.parts[i].name,0,sizeof(mbr.parts[i].name));
+        mbr.parts[i].type='-';
+        mbr.parts[i].start=0;
+        mbr.parts[i].end=0;
+        mbr.parts[i].size=0;
+    }
+
+    file.seekp(0);
+    file.write((char*)&mbr,sizeof(MBR));
+    file.close();
+
+    cout<<"Disco creado correctamente\n";
+}
+
+/* ======================= FIRST FIT ======================= */
+
+int firstFit(MBR &mbr,int size){
+
+    int inicio=sizeof(MBR);
+
+    vector<Partition> activas;
+
+    for(int i=0;i<4;i++)
+        if(mbr.parts[i].active)
+            activas.push_back(mbr.parts[i]);
+
+    sort(activas.begin(),activas.end(),[](Partition a,Partition b){
+        return a.start<b.start;
+    });
+
+    for(auto &p:activas){
+        if(p.start-inicio>=size)
+            return inicio;
+        inicio=p.end;
+    }
+
+    if(mbr.disk_size-inicio>=size)
+        return inicio;
+
+    return -1;
+}
+
+/* ======================= VALIDAR TIPOS ======================= */
+
+bool puedeCrear(MBR &mbr,char tipo){
+
+    int primarias=0;
+    int extendidas=0;
+
+    for(int i=0;i<4;i++){
+        if(mbr.parts[i].active){
+            if(mbr.parts[i].type=='P') primarias++;
+            if(mbr.parts[i].type=='E') extendidas++;
+        }
+    }
+
+    if(tipo=='P' && primarias>=1){
+        cout<<"Maximo 1 particione primarias\n";
+        return false;
+    }
+
+    if(tipo=='E' && extendidas>=3){
+        cout<<"Solo puede existir 3 particiones extendidas\n";
+        return false;
+    }
+
+    return true;
+}
+
+/* ======================= CREAR PARTICION ======================= */
+
+void crearParticion(string path,string nombre,int sizeKB,char tipo){
+
+    if(!existeArchivo(path)){
+        cout<<"El disco no existe\n";
+        return;
+    }
+
+    fstream file(path,ios::in|ios::out|ios::binary);
+
+    MBR mbr;
+    file.read((char*)&mbr,sizeof(MBR));
+
+    if(!puedeCrear(mbr,tipo))
+        return;
+
+    int size=sizeKB*1024;
+
+    int pos=firstFit(mbr,size);
+
+    if(pos==-1){
+        cout<<"No hay espacio suficiente\n";
+        return;
+    }
+
+    for(int i=0;i<4;i++){
+        if(!mbr.parts[i].active){
+
+            mbr.parts[i].id=rand()%900000+100000;
+            memset(mbr.parts[i].name,0,sizeof(mbr.parts[i].name));
+            strncpy(mbr.parts[i].name,nombre.c_str(),15);
+            mbr.parts[i].type=tipo;
+            mbr.parts[i].start=pos;
+            mbr.parts[i].size=size;
+            mbr.parts[i].end=pos+size;
+            mbr.parts[i].active=true;
+
+            mbr.free_space-=size;
+
+            // escribir la particion (llenar con 0)
+            file.seekp(pos);
+            char cero='\0';
+            for(int j=0;j<size;j++)
+                file.write(&cero,1);
+
+            escribirMBR(path,mbr);
+
+            cout<<"Particion creada. ID: "<<mbr.parts[i].id<<endl;
+            return;
+        }
+    }
+
+    cout<<"Tabla de particiones llena\n";
+}
+
+/* ======================= ELIMINAR PARTICION ======================= */
+
+void eliminarParticion(string path,int id,bool full){
+
+    fstream file(path,ios::in|ios::out|ios::binary);
+    MBR mbr;
+    file.read((char*)&mbr,sizeof(MBR));
+
+    for(int i=0;i<4;i++){
+
+        if(mbr.parts[i].active && mbr.parts[i].id==id){
+
+            if(full){
+                file.seekp(mbr.parts[i].start);
+                char cero='\0';
+                for(int j=0;j<mbr.parts[i].size;j++)
+                    file.write(&cero,1);
+            }
+
+            mbr.free_space+=mbr.parts[i].size;
+            mbr.parts[i].active=false;
+            mbr.parts[i].id=0;
+            memset(mbr.parts[i].name,0,sizeof(mbr.parts[i].name));
+            mbr.parts[i].type='-';
+            mbr.parts[i].start=0;
+            mbr.parts[i].end=0;
+            mbr.parts[i].size=0;
+
+            escribirMBR(path,mbr);
+            cout<<"Particion eliminada\n";
+            return;
+        }
+    }
+
+    cout<<"ID no encontrado\n";
+}
+
+/* ======================= LISTAR ======================= */
+
+void listar(string path){
+
+    MBR mbr=leerMBR(path);
+
+    cout<<"\n====== INFORMACION DEL MBR ======\n";
+    cout<<"Disco: "<<limpiarTexto(mbr.disk_name,sizeof(mbr.disk_name))<<endl;
+    cout<<"Tamano: "<<mbr.disk_size/1024<<" KB\n";
+    cout<<"Libre: "<<mbr.free_space/1024<<" KB\n\n";
+
+    for(int i=0;i<4;i++){
+        if(mbr.parts[i].active){
+            cout<<"Particion "<<i+1<<"\n";
+            cout<<"ID: "<<mbr.parts[i].id<<endl;
+            cout<<"Nombre: "<<limpiarTexto(mbr.parts[i].name,16)<<endl;
+            cout<<"Tipo: "<<mbr.parts[i].type<<endl;
+            cout<<"Inicio: "<<mbr.parts[i].start<<endl;
+            cout<<"Fin: "<<mbr.parts[i].end<<endl;
+            cout<<"Tamano: "<<mbr.parts[i].size/1024<<" KB\n";
+            cout<<"----------------------\n";
+        }
+    }
+}
+
+/* ======================= GRAPHVIZ ======================= */
+
+void generarGrafico(string path){
+
+    MBR mbr=leerMBR(path);
+
+    vector<Partition> activas;
+    for(int i=0;i<4;i++)
+        if(mbr.parts[i].active)
+            activas.push_back(mbr.parts[i]);
+
+    sort(activas.begin(),activas.end(),[](Partition a,Partition b){
+        return a.start<b.start;
+    });
+
+    ofstream dot("disco.dot");
+
+    dot<<"digraph G{\n";
+    dot<<"rankdir=LR;\n";
+    dot<<"node [shape=record];\n";
+
+    dot<<"disk[label=\"{MBR";
+
+    long long cursor=sizeof(MBR);
+
+    for(auto &p:activas){
+
+        if(p.start>cursor){
+            long long libre=(long long)p.start-cursor;
+            if(libre<0) libre=0;
+            dot<<"|{Libre|"<<libre/1024<<"KB}";
+        }
+
+        string nombre=limpiarTexto(p.name,16);
+        long long size=p.size<0?0:p.size;
+        dot<<"|{"<<nombre<<"|"<<size/1024<<"KB}";
+        cursor=p.end;
+    }
+
+    if(mbr.disk_size>cursor){
+        long long libre=(long long)mbr.disk_size-cursor;
+        if(libre<0) libre=0;
+        dot<<"|{Libre|"<<libre/1024<<"KB}";
+    }
+
+    dot<<"}\"];\n}";
+    dot.close();
+
+    cout<<"Grafico generado: disco.dot\n";
+    cout<<"Ejecuta: dot -Tpng disco.dot -o disco.png\n";
+}
+
+/* ======================= MENU ======================= */
+
+int main(){
+
+    srand(time(NULL));
+
+    while(true){
+        cout<<"\n==== MINI FDISK ====\n";
+        cout<<"1 Crear Disco\n";
+        cout<<"2 Crear Particion\n";
+        cout<<"3 Eliminar Particion\n";
+        cout<<"4 Listar (MBR + Particiones)\n";
+        cout<<"5 Grafico\n";
+        cout<<"6 Salir\n";
+        cout<<"Opcion: ";
+
+        string sop;
+        if(!getline(cin, sop)) return 0; // EOF/ctrl+d
+        if(sop.empty()) continue;
+
+        int op = -1;
+        try{ op = stoi(sop); }catch(...){ cout<<"Opcion invalida\n"; continue; }
+
+        string path,nombre;
+        int size=0,id=0,format=0;
+        char tipo='P';
+
+        switch(op){
+        case 1:
+            cout<<"Nombre (archivo .bin): ";
+            getline(cin,path);
+            cout<<"Tamano KB: ";
+            {
+                string s; getline(cin,s);
+                try{ size = stoi(s); }catch(...){ cout<<"Tamano invalido\n"; break; }
+            }
+            if(size<=0){ cout<<"Tamano invalido\n"; break; }
+            crearDisco(path,size);
+            break;
+
+        case 2:
+            cout<<"Ruta disco: "; getline(cin,path);
+            cout<<"Nombre particion: "; getline(cin,nombre);
+            cout<<"Tamano KB: ";
+            {
+                string s; getline(cin,s);
+                try{ size = stoi(s); }catch(...){ cout<<"Tamano invalido\n"; break; }
+            }
+            cout<<"Tipo (P/E): ";
+            {
+                string s; getline(cin,s);
+                if(!s.empty()) tipo = toupper(s[0]);
+                if(tipo!='P' && tipo!='E'){ cout<<"Tipo invalido\n"; break; }
+            }
+            crearParticion(path,nombre,size,tipo);
+            break;
+
+        case 3:
+            cout<<"Ruta disco: "; getline(cin,path);
+            cout<<"ID: ";
+            {
+                string s; getline(cin,s);
+                try{ id = stoi(s); }catch(...){ cout<<"ID invalido\n"; break; }
+            }
+            cout<<"1 lento 0 rapido: ";
+            {
+                string s; getline(cin,s);
+                try{ format = stoi(s); }catch(...){ cout<<"Formato invalido\n"; break; }
+            }
+            eliminarParticion(path,id,format);
+            break;
+
+        case 4:
+            cout<<"Ruta disco: "; getline(cin,path);
+            if(!existeArchivo(path)){ cout<<"El disco no existe\n"; break; }
+            listar(path);
+            break;
+
+        case 5:
+            cout<<"Ruta disco: "; getline(cin,path);
+            if(!existeArchivo(path)){ cout<<"El disco no existe\n"; break; }
+            generarGrafico(path);
+            break;
+
+        case 6:
+            return 0;
+
+        default:
+            cout<<"Opcion invalida\n";
+        }
+    }
+}
