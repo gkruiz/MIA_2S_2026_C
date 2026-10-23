@@ -1,0 +1,113 @@
+
+
+
+
+
+<body class='body' ng-app="" >
+
+<div class="container-fluid mt-4">
+
+  <!-- TÍTULO -->
+  <div class="row mb-4">
+    <div class="col text-center">
+      <h2 class="titulo">Manejo e Implementación de Archivos</h2>
+      <p class="subtitulo">Consola X -02/03/2026 - USAC</p>
+    </div>
+  </div>
+
+  <div class="row">
+
+    <!-- PANEL IZQUIERDO: CONSOLA -->
+    <div class="col-md-6">
+
+      <div class="card shadow">
+        <div class="card-header bg-dark text-white">
+          Consola de Comandos
+        </div>
+
+        <div class="card-body consola">
+          <div *ngFor="let log of logs">
+            {{ log }}
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <div class="input-group">
+            <input 
+              type="text"
+              class="form-control"
+              #comando
+              (keyup.enter)="analizaComandos(comando.value)"
+              placeholder="Ingrese un comando..."
+            >
+            <button 
+              class="btn btn-primary"
+              (click)="analizaComandos(comando.value)">
+              Ejecutar
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- PANEL DERECHO: DISCOS Y PARTICIONES -->
+    <div class="col-md-6">
+
+      <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+          Información de Discos y Particiones
+        </div>
+
+        <div class="card-body info-disco">
+
+          <div  >
+            <textarea rows="10" cols="70">
+            {{
+              info.length>0? info : "No hay información disponible." 
+            }}
+
+            </textarea>
+            
+          </div>
+
+          <div *ngFor="let disco of discos" class="mb-3 border p-2 rounded">
+
+            <h5>Disco: {{ disco.nombre }}</h5>
+            <p>Tamaño: {{ disco.tamano }}</p>
+
+            <table class="table table-sm table-striped">
+              <thead>
+                <tr>
+                  <th>Partición</th>
+                  <th>Tamaño</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let particion of disco.particiones">
+                  <td>{{ particion.nombre }}</td>
+                  <td>{{ particion.tamano }}</td>
+                  <td>{{ particion.tipo }}</td>
+                </tr>
+              </tbody>
+            </table>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+</body>
+
+
+ 

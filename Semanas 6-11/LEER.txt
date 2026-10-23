@@ -1,0 +1,30 @@
+Comandos que acepta analizador:
+mkdisk -Size=3000 -unit=K -path= Disco1.mia
+rep -path=Disco -name=part1
+
+Rutas de la api para crear discos , particiones y obtener reporte:
+http://localhost:8080/mkdisk?size=10&unit=m&path=disco.dk
+http://localhost:8080/fdisk?size=2&unit=m&path=miDisco.dk&type=p&name=part1
+http://localhost:8080/rep?path=miDisco.dk&name=*
+http://localhost:8080/rep?path=Disco.dk&name=part1
+
+Pagina para descargar consola de Linux en windows:
+https://www.msys2.org/
+
+Comando para instalar compilador c dentro de consola Linux:
+pacman -S mingw-w64-ucrt-x86_64-gcc
+
+Version de compilador instalado:
+gcc --version
+
+Link libreria api:
+https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.10.8/httplib.h
+
+Ruta que usa para moverse entre carpetas:
+cd /c/user/desktop/carpeta
+
+Comando para compilar e incluir libreria de api:
+g++ api.cpp -o api.exe -std=c++17 -pthread -lws2_32
+
+Comando para ejecutar api:
+ ./api.exe

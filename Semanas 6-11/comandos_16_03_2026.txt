@@ -1,0 +1,20 @@
+mkdisk -Size=3000 -unit=K -path= Disco1.mia
+fdisk -size= 20 -unit=k -path=Disco-1.mia -type=p -name=part-1
+rep -path=disco1.mia -name=part-1
+
+
+ /c/Users/prueba/Desktop/api-rest
+
+http://localhost:8080/mkdisk?size=10&unit=m&path=disco.dk
+http://localhost:8080/fdisk?size=2&unit=m&path=miDisco.dk&type=p&name=part1
+http://localhost:8080/rep?path=miDisco.dk&name=*
+http://localhost:8080/rep?path=Disco.dk&name=part1
+
+https://www.msys2.org/
+pacman -S mingw-w64-ucrt-x86_64-gcc
+gcc --version
+
+https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.10.8/httplib.h
+g++ api.cpp -o api.exe -std=c++17 -pthread -lws2_32
+
+ ./api.exe
